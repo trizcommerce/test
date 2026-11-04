@@ -689,7 +689,7 @@ function ideaScore(it, ctx) {
   if (it.months) { s += 2; why.push(`${ctx.month}월 시즌`); }
   const w = it.when || [];
   if (w.includes(ctx.weekend ? "weekend" : "weekday")) { s += 1.5; why.push(ctx.weekend ? "주말" : "평일"); }
-  else if (w.length) s *= 0.25;
+  else if (w.length) { if (it.w === 1) return [0]; s *= 0.25; } // 조합 주제는 요일이 안 맞으면 빼기
   if (ctx.busy && (it.f === "스토리")) { s += 1.5; why.push("가볍게 올리기 좋음"); }
   else if (ctx.busy && it.f === "라방") s *= 0.3;
   return [s, why];
@@ -783,9 +783,9 @@ function renderAgenda() {
     <div class="ag-sub">${dday.join("")}${sum ? `<span class="pill ghost">${sum}</span>` : ""}</div>
     ${dayList.length ? `<div class="list">${dayList.map((e, i) => entryHTML(e, i)).join("")}</div>`
       : `<div class="empty">이 날은 시트에 잡힌 콘텐츠가 없어요.</div>`}
-    ${ideasHTML()}
     <div class="up-head">${sel === TODAY ? `다가오는 ${UPCOMING}일` : `이후 ${UPCOMING}일`}</div>
     ${soon.length ? soon.join("") : `<div class="empty sm">${UPCOMING}일 안에 잡힌 콘텐츠가 없어요.</div>`}
+    ${ideasHTML()}
     <p class="foot">시트 기준 ${esc(DATA.updated)} 업데이트 · <a href="${DATA.sheetUrl}" target="_blank" rel="noopener">원본 시트 열기</a></p>`;
 }
 
