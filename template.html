@@ -112,6 +112,7 @@ a{color:var(--accent)}
 .up-date b{color:var(--ink);font-weight:600;margin-right:4px}
 .idea-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .idea-head .today-btn{font-family:var(--body)}
+.idea-intro{margin:4px 2px 0;font-size:11.5px;line-height:1.5;color:var(--muted);word-break:keep-all}
 .idea-ctx{margin:4px 2px 12px;font-size:13px;color:var(--muted)}
 .fmt.idea-g{font-size:10.5px}
 .fmt.idea-g.image{background:var(--accent-soft);color:var(--accent)}
@@ -721,6 +722,7 @@ function ideasHTML() {
   const {ctx, picks} = got;
   ideaShown = picks;
   return `<div class="up-head idea-head"><span>💡 일상 콘텐츠 추천</span><button type="button" class="today-btn" id="idea-more">다른 주제</button></div>
+    ${IDEAS.intro ? `<p class="idea-intro">${esc(IDEAS.intro)}</p>` : ""}
     <div class="idea-ctx">${esc(ctx.line)}</div>
     <div class="list">${picks.map((it, i) => {
       const ref = it.ref && IDEAS.refs[it.ref];
