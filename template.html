@@ -681,7 +681,7 @@ function ideaCtx(k) {
   const weekend = d.getDay() === 0 || d.getDay() === 6;
   const busy = (byDate[k] || []).filter(e => !e.holiday && e.fmt !== "meeting").length;
   return {month: d.getMonth() + 1, weekend, busy,
-    line: `${d.getMonth() + 1}월 ${weekend ? "주말" : "평일"}${busy ? " · 업로드가 있는 날이라 가벼운 주제 위주" : ""}`};
+    line: `${d.getMonth() + 1}월 ${weekend ? "주말" : "평일"}`};
 }
 function ideaScore(it, ctx) {
   if (it.months && !it.months.includes(ctx.month)) return [0];
