@@ -116,6 +116,9 @@ a{color:var(--accent)}
 .fmt.idea-g{font-size:10.5px}
 .fmt.idea-g.image{background:var(--accent-soft);color:var(--accent)}
 .fmt.idea-g.grow{background:var(--ink);color:var(--bg)}
+.fmt.idea-g.bench{background:#F6E7C8;color:#7A4E00}
+:root[data-theme="dark"] .fmt.idea-g.bench{background:#3A2E14;color:#F2C877}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .fmt.idea-g.bench{background:#3A2E14;color:#F2C877}}
 .fmt.idea-g.talk{background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent);border-radius:50%}
 .empty.sm{margin-top:10px;padding:16px}
 .empty{padding:28px 16px;text-align:center;color:var(--muted);background:var(--surface);border-radius:16px;border:1px dashed var(--line)}
@@ -658,76 +661,88 @@ function entryHTML(e, idx, opts = {}) {
   </button>`;
 }
 
-/* ---------------- 일상 콘텐츠 주제 추천 (ideas.json 이 있는 앱만) ---------------- */
+/* ---------------- 일상 콘텐츠 주제 추천 (ideas.json 이 있는 앱만) ----------------
+   커머스·제품과는 연결하지 않음. 계절·요일·그날 업로드 양만 봄.
+   이 휴대폰에서 이미 본 주제는 다시 보여주지 않고(다 보면 처음부터), '다른 주제'는 매번 새로 고름. */
 const IDEAS = /*__IDEAS__*/null;
-let ideaSpin = 0, ideaPicked = [];
-const GOAL_ORDER = ["image", "grow", "talk"];
-function ideaSeed(s) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909)) >>> 0) / 4294967296; }
-function ideaCat(label) {
-  for (const [c, words] of Object.entries(IDEAS.cats || {})) if (words.some(w => label.includes(w))) return c;
-  return "";
-}
-function ideaCtx(k) { // 그날의 상황: 공구 중 / 오픈 전 / 끝난 뒤 / 여유
-  const d = parse(k), days = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
-  const run = sales.find(r => r.s <= k && k <= r.e);
-  const next = sales.filter(r => r.s > k).sort((a, b) => a.s < b.s ? -1 : 1)[0];
-  const prev = sales.filter(r => r.e < k).sort((a, b) => a.e > b.e ? -1 : 1)[0];
-  const ctx = {month: d.getMonth() + 1, weekend: d.getDay() === 0 || d.getDay() === 6, busy: (byDate[k] || []).filter(e => e.pid).length};
-  if (run) Object.assign(ctx, {phase: "sale", sale: run, line: `${run.label} 공구 중 · 판매 글 사이에 쉬어 가는 일상`});
-  else if (next && days(k, next.s) <= 7) Object.assign(ctx, {phase: "pre", sale: next, line: `${next.label} 오픈 D-${days(k, next.s)} · 관심을 미리 데워 두는 시기`});
-  else if (prev && days(prev.e, k) <= 5) Object.assign(ctx, {phase: "post", sale: prev, line: `${prev.label} 공구 끝난 뒤 · 감사와 신뢰를 쌓는 시기`});
-  else ctx.phase = "free", ctx.line = "공구 없는 기간 · 셀러 색깔을 쌓기 좋은 때";
-  ctx.cat = ctx.sale ? ideaCat(ctx.sale.label) : "";
-  return ctx;
+const GOAL_ORDER = ["image", "grow", "talk", "bench"];
+const IDEA_POOL = !IDEAS ? [] : [
+  ...IDEAS.items.map(it => ({...it, w: it.ref ? 3 : 2})), // 직접 쓴 주제를 먼저
+  ...IDEAS.angles.flatMap(a => IDEAS.themes.map(th => ({ // 셀러 일상 주제 × 형식 조합
+    g: a.g, f: a.f, t: a.t.replaceAll("{n}", th.n), hook: a.hook.replaceAll("{n}", th.n),
+    steps: a.steps, why: a.why, months: th.months, when: th.when, w: 1}))),
+];
+const IDEA_SEEN_KEY = "ideasSeen";
+let ideaSeen = new Set((() => { try { return JSON.parse(store.get(IDEA_SEEN_KEY) || "[]"); } catch (e) { return []; } })());
+const ideaCache = {}; // 날짜별로 지금 보여주는 주제 (날짜를 오가도 그대로)
+function ideaCtx(k) {
+  const d = parse(k);
+  const weekend = d.getDay() === 0 || d.getDay() === 6;
+  const busy = (byDate[k] || []).filter(e => !e.holiday && e.fmt !== "meeting").length;
+  return {month: d.getMonth() + 1, weekend, busy,
+    line: `${d.getMonth() + 1}월 ${weekend ? "주말" : "평일"}${busy ? " · 업로드가 있는 날이라 가벼운 주제 위주" : ""}`};
 }
 function ideaScore(it, ctx) {
   if (it.months && !it.months.includes(ctx.month)) return [0];
-  if (it.only && !it.only.includes(ctx.phase)) return [0];
   const why = [];
-  let s = 1;
-  if (it.only || (it.when || []).includes(ctx.phase)) { s += 3; why.push({sale: "공구 중", pre: "오픈 전", post: "공구 후", free: "공구 없는 기간"}[ctx.phase]); }
+  let s = it.w;
   if (it.months) { s += 2; why.push(`${ctx.month}월 시즌`); }
-  if ((it.when || []).includes(ctx.weekend ? "weekend" : "weekday")) { s += 1.5; why.push(ctx.weekend ? "주말" : "평일"); }
-  else if ((it.when || []).includes(ctx.weekend ? "weekday" : "weekend") && !(it.when || []).includes(ctx.phase)) s *= 0.3; // 주말용 주제는 평일엔 덜
-  if (it.cat && ctx.cat === it.cat && ctx.phase !== "free") { s += 2; why.push(`${ctx.sale.label}와 연결`); }
-  else if (it.cat && ctx.cat && ctx.phase !== "free") s *= 0.4; // 다가오는 공구와 다른 분야(식품↔뷰티)는 덜
-  if (ctx.busy && it.f === "스토리") { s += 2; why.push("커머스 콘텐츠 있는 날 · 가볍게"); }
-  if (ctx.busy && it.f !== "스토리") s *= 0.5;
+  const w = it.when || [];
+  if (w.includes(ctx.weekend ? "weekend" : "weekday")) { s += 1.5; why.push(ctx.weekend ? "주말" : "평일"); }
+  else if (w.length) s *= 0.25;
+  if (ctx.busy && (it.f === "스토리")) { s += 1.5; why.push("가볍게 올리기 좋음"); }
+  else if (ctx.busy && it.f === "라방") s *= 0.3;
   return [s, why];
 }
-function ideaPicks(k) {
-  const ctx = ideaCtx(k), rnd = ideaSeed(`${k}|${ideaSpin}`);
+function pickIdeas(k, avoid = []) {
+  const ctx = ideaCtx(k);
   const picks = GOAL_ORDER.map(g => {
-    const pool = IDEAS.items.filter(it => it.g === g).map(it => ({it, r: ideaScore(it, ctx)})).filter(x => x.r[0] > 0);
-    const fresh = pool.filter(x => !ideaPicked.includes(x.it)); // 바로 전에 보여준 주제는 빼고
-    const list = fresh.length ? fresh : pool;
-    let t = list.reduce((a, x) => a + x.r[0] ** 2, 0) * rnd();
-    const hit = list.find(x => (t -= x.r[0] ** 2) <= 0) || list[0];
-    return hit && {...hit.it, src: hit.it, whyText: hit.it.why, why: hit.r[1]};
+    let pool = IDEA_POOL.filter(it => it.g === g && !avoid.includes(it.t)).map(it => ({it, r: ideaScore(it, ctx)})).filter(x => x.r[0] > 0);
+    let fresh = pool.filter(x => !ideaSeen.has(x.it.t));
+    if (!fresh.length) { // 이 목표의 주제를 다 봤으면 본 기록을 비우고 처음부터
+      pool.forEach(x => ideaSeen.delete(x.it.t));
+      fresh = pool;
+    }
+    const hand = fresh.filter(x => x.it.w > 1), gen = fresh.filter(x => x.it.w === 1);
+    if (hand.length && (!gen.length || Math.random() < 0.7)) fresh = hand; else if (gen.length) fresh = gen; // 직접 쓴 주제 70%, 조합 주제 30%
+    let t = fresh.reduce((a, x) => a + x.r[0], 0) * Math.random();
+    const hit = fresh.find(x => (t -= x.r[0]) <= 0) || fresh[0];
+    if (!hit) return null;
+    ideaSeen.add(hit.it.t);
+    return {...hit.it, whyText: hit.it.why, why: hit.r[1]};
   }).filter(Boolean);
+  store.set(IDEA_SEEN_KEY, JSON.stringify([...ideaSeen].slice(-600)));
   return {ctx, picks};
 }
+let ideaShown = [];
 function ideasHTML() {
   if (!IDEAS) return "";
-  if (sel !== ideaDay) { ideaDay = sel; ideaSpin = 0; ideaPicked = []; } // 날짜를 바꾸면 처음 추천부터
-  const {ctx, picks} = ideaPicks(sel);
+  const got = ideaCache[sel] ||= pickIdeas(sel);
+  const {ctx, picks} = got;
   ideaShown = picks;
   return `<div class="up-head idea-head"><span>💡 일상 콘텐츠 추천</span><button type="button" class="today-btn" id="idea-more">다른 주제</button></div>
     <div class="idea-ctx">${esc(ctx.line)}</div>
-    <div class="list">${picks.map((it, i) => `<button type="button" class="entry idea" data-idea="${i}">
-      <span class="fmt idea-g ${it.g}">${{image: "이미지", grow: "성장", talk: "소통"}[it.g]}</span>
-      <span class="e-body"><span class="e-title">${esc(it.t)}</span><span class="e-prev">${esc(it.whyText)}</span>
-      <span class="e-meta"><span>${esc(it.f)}</span>${it.why.map(w => `<span>${esc(w)}</span>`).join("")}</span></span>
-      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button>`).join("")}</div>`;
+    <div class="list">${picks.map((it, i) => {
+      const ref = it.ref && IDEAS.refs[it.ref];
+      const meta = [it.f, ...(ref ? [`참고: ${ref.stat}`] : []), ...it.why];
+      return `<button type="button" class="entry idea" data-idea="${i}">
+      <span class="fmt idea-g ${it.g}">${esc(IDEAS.short[it.g])}</span>
+      <span class="e-body"><span class="e-title">${esc(it.t)}</span><span class="e-prev">${esc(ref ? ref.point : it.whyText)}</span>
+      <span class="e-meta">${meta.map(w => `<span>${esc(w)}</span>`).join("")}</span></span>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button>`;
+    }).join("")}</div>`;
 }
-let ideaShown = [], ideaDay = null;
-function moreIdeas() { // '다른 주제': 지금 보이는 주제는 빼고 다시 고름
-  ideaPicked = ideaShown.map(x => x.src); ideaSpin++;
+function moreIdeas() { // '다른 주제': 지금 보이는 주제는 빼고 새로 고름
+  ideaCache[sel] = pickIdeas(sel, ideaShown.map(x => x.t));
   renderAgenda();
+  document.querySelector(".idea-head")?.scrollIntoView({block: "nearest"});
 }
 function openIdea(it) {
-  const text = `[${IDEAS.goals[it.g]} · ${it.f}] ${it.t}\n첫 문장: ${it.hook}\n구성:\n${it.steps.map((s, i) => `${i + 1}) ${s}`).join("\n")}\n도움 되는 점: ${it.whyText}`;
+  const ref = it.ref && IDEAS.refs[it.ref];
+  const text = `[${IDEAS.goals[it.g]} · ${it.f}] ${it.t}\n첫 문장: ${it.hook}\n구성:\n${it.steps.map((s, i) => `${i + 1}) ${s}`).join("\n")}\n도움 되는 점: ${it.whyText}` +
+    (ref ? `\n참고 게시물: ${ref.label} (${ref.stat}) ${ref.url}` : "");
   openSheet(`<span class="pill">${esc(IDEAS.goals[it.g])}</span><span class="pill ghost">${esc(it.f)}</span>`, it.t,
+    (ref ? `<div class="field"><div class="lb">벤치마킹한 게시물</div><div class="tx"><a href="${safeUrl(ref.url)}" target="_blank" rel="noopener">${esc(ref.label)}</a>\n${esc(ref.stat)}\n${esc(ref.point)}</div></div>` : "") +
     `<div class="field"><div class="lb">첫 문장 예시</div><div class="tx">${esc(it.hook)}</div></div>
      <div class="field"><div class="lb">이렇게 구성해 보세요</div><div class="tx">${it.steps.map((s, i) => `${i + 1}) ${esc(s)}`).join("\n")}</div></div>
      <div class="field"><div class="lb">이렇게 도움돼요</div><div class="tx">${esc(it.whyText)}</div></div>
