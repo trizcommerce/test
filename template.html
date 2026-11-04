@@ -715,6 +715,12 @@ function pickIdeas(k, avoid = []) {
   store.set(IDEA_SEEN_KEY, JSON.stringify([...ideaSeen].slice(-600)));
   return {ctx, picks};
 }
+function ideaIntro() { // ideas.json 의 analysis(분석 기간·게시글 수)로 안내 문장을 만듦 → 분석을 새로 하면 문장도 자동으로 바뀜
+  const a = IDEAS.analysis; if (!a) return "";
+  const f = parse(a.from), t = parse(a.to);
+  const months = Math.max(1, Math.round((t - f) / (30.4 * 864e5)));
+  return `<p class="idea-intro">최근 ${months}개월(${f.getMonth() + 1}/${f.getDate()}~${t.getMonth() + 1}/${t.getDate()}) 인스타그램 게시글 ${a.count}개를 분석해, 반응이 좋았던 일상 콘텐츠 형식을 바탕으로 셀러 이미지·계정 성장·팔로워 소통에 도움 되는 주제를 추천드려요!</p>`;
+}
 let ideaShown = [];
 function ideasHTML() {
   if (!IDEAS) return "";
@@ -722,7 +728,7 @@ function ideasHTML() {
   const {ctx, picks} = got;
   ideaShown = picks;
   return `<div class="up-head idea-head"><span>💡 일상 콘텐츠 추천</span><button type="button" class="today-btn" id="idea-more">다른 주제</button></div>
-    ${IDEAS.intro ? `<p class="idea-intro">${esc(IDEAS.intro)}</p>` : ""}
+    ${ideaIntro()}
     <div class="idea-ctx">${esc(ctx.line)}</div>
     <div class="list">${picks.map((it, i) => {
       const ref = it.ref && IDEAS.refs[it.ref];
