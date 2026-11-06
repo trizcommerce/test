@@ -114,6 +114,24 @@ a{color:var(--accent)}
 .idea-head .today-btn{font-family:var(--body)}
 .idea-intro{margin:4px 2px 0;font-size:11.5px;line-height:1.5;color:var(--muted);word-break:keep-all}
 .idea-intro .idea-at{font-size:10.5px;opacity:.85;white-space:nowrap}
+.mk.idea{background:transparent;border-radius:1px;width:7px;height:7px;transform:rotate(45deg);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.plan-head{margin:16px 2px 8px;font-size:13.5px;font-weight:700;color:var(--accent)}
+.entry.plan{box-shadow:var(--shadow),inset 0 0 0 1.5px var(--accent-soft)}
+.srcs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+.srcs.big{margin:10px 0 2px}
+.src{display:inline-flex;align-items:center;gap:2px;height:20px;padding:0 7px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.src.trend{background:#FDE2D6;color:#A3330B}
+.src.search{background:#DCE8FB;color:#1D4E9E}
+.src.fan{background:#F6E1EF;color:#8A2468}
+.src.perf{background:#F6E7C8;color:#7A4E00}
+:root[data-theme="dark"] .src.trend{background:#43231A;color:#FFB59A}
+:root[data-theme="dark"] .src.search{background:#1B2B44;color:#A9C8FF}
+:root[data-theme="dark"] .src.fan{background:#3A1E32;color:#F2A9DA}
+:root[data-theme="dark"] .src.perf{background:#3A2E14;color:#F2C877}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .src.trend{background:#43231A;color:#FFB59A}
+:root:not([data-theme="light"]) .src.search{background:#1B2B44;color:#A9C8FF}
+:root:not([data-theme="light"]) .src.fan{background:#3A1E32;color:#F2A9DA}
+:root:not([data-theme="light"]) .src.perf{background:#3A2E14;color:#F2C877}}
 .idea-ctx{margin:4px 2px 12px;font-size:13px;color:var(--muted)}
 .fmt.idea-g{font-size:10.5px}
 .fmt.idea-g.image{background:var(--accent-soft);color:var(--accent)}
@@ -360,6 +378,9 @@ details.fold[open] summary::after{transform:rotate(-135deg);margin-top:4px}
 
 <script>
 const DATA = /*__DATA__*/null;
+const IDEAS = /*__IDEAS__*/null; // 일상 콘텐츠 추천 (ideas.json 이 있는 앱만)
+const SRC = {trend: ["🔥", "유행"], search: ["🔎", "검색량"], fan: ["💬", "팔로워 관심"], perf: ["📈", "성과 검증"]};
+const srcChips = it => (it.src || []).map(k => SRC[k] ? `<span class="src ${k}">${SRC[k][0]} ${SRC[k][1]}</span>` : "").join("");
 const $ = s => document.querySelector(s);
 const DOW = ["일","월","화","수","목","금","토"];
 const FMT = {reel:"릴스", post:"피드", story:"스토리", qa:"무물", live:"라방", ad:"광고", meeting:"일정", free:"자유", etc:"기타"};
@@ -666,10 +687,9 @@ function entryHTML(e, idx, opts = {}) {
 /* ---------------- 일상 콘텐츠 주제 추천 (ideas.json 이 있는 앱만) ----------------
    커머스·제품과는 연결하지 않음. 계절·요일·그날 업로드 양만 봄.
    이 휴대폰에서 이미 본 주제는 다시 보여주지 않고(다 보면 처음부터), '다른 주제'는 매번 새로 고름. */
-const IDEAS = /*__IDEAS__*/null;
 const GOAL_ORDER = ["image", "grow", "talk", "bench"];
 const IDEA_POOL = !IDEAS ? [] : [
-  ...IDEAS.items.map(it => ({...it, w: it.ref ? 3 : 2})), // 직접 쓴 주제를 먼저
+  ...IDEAS.items.map(it => ({...it, w: it.src?.length ? 4 : it.ref ? 3 : 2})), // 근거(유행·검색량·팔로워 관심·성과)가 있는 자세한 기획을 먼저
   ...IDEAS.angles.flatMap(a => IDEAS.themes.map(th => ({ // 셀러 일상 주제 × 형식 조합
     g: a.g, f: a.f, t: a.t.replaceAll("{n}", th.n), hook: a.hook.replaceAll("{n}", th.n),
     steps: a.steps, why: a.why, months: th.months, when: th.when, w: 1}))),
@@ -705,8 +725,10 @@ function pickIdeas(k, avoid = []) {
       pool.forEach(x => ideaSeen.delete(x.it.t));
       fresh = pool;
     }
-    const hand = fresh.filter(x => x.it.w > 1), gen = fresh.filter(x => x.it.w === 1);
-    if (hand.length && (!gen.length || Math.random() < 0.7)) fresh = hand; else if (gen.length) fresh = gen; // 직접 쓴 주제 70%, 조합 주제 30%
+    // 자세한 기획(후킹·상황 묘사·근거 있음) 75% → 그 외 직접 쓴 주제 15% → 조합 주제 10%
+    const tiers = [fresh.filter(x => x.it.hooks), fresh.filter(x => !x.it.hooks && x.it.w > 1), fresh.filter(x => x.it.w === 1)];
+    const odds = [0.75, 0.15, 0.10].map((o, i) => tiers[i].length ? o : 0), sum = odds.reduce((a, b) => a + b, 0);
+    if (sum) { let r = Math.random() * sum, ti = 0; while (ti < 2 && (r -= odds[ti]) > 0) ti++; while (!tiers[ti].length) ti = (ti + 1) % 3; fresh = tiers[ti]; }
     let t = fresh.reduce((a, x) => a + x.r[0], 0) * Math.random();
     const hit = fresh.find(x => (t -= x.r[0]) <= 0) || fresh[0];
     if (!hit) return null;
@@ -716,11 +738,13 @@ function pickIdeas(k, avoid = []) {
   store.set(IDEA_SEEN_KEY, JSON.stringify([...ideaSeen].slice(-600)));
   return {ctx, picks};
 }
-function ideaIntro() { // ideas.json 의 analysis(분석 기간·게시글 수)로 안내 문장을 만듦 → 분석을 새로 하면 문장도 자동으로 바뀜
+function ideaIntro() { // ideas.json 의 analysis 로 안내 문장을 만듦 → 분석을 새로 하면 문장도 자동으로 바뀜
   const a = IDEAS.analysis; if (!a) return "";
   const f = parse(a.from), t = parse(a.to);
   const months = Math.max(1, Math.round((t - f) / (30.4 * 864e5)));
-  return `<p class="idea-intro">최근 ${months}개월(${f.getMonth() + 1}/${f.getDate()}~${t.getMonth() + 1}/${t.getDate()}) 인스타그램 게시글 ${a.count}개를 분석해, 반응이 좋았던 일상 콘텐츠 형식을 바탕으로 셀러 이미지·계정 성장·팔로워 소통에 도움 되는 주제를 추천드려요!${a.at ? ` <small class="idea-at">· ${+a.at.slice(5, 7)}/${+a.at.slice(8, 10)} 업데이트</small>` : ""}</p>`;
+  const parts = [`게시글 ${a.count}개의 성과`, a.comments ? "팔로워 댓글" : "", a.trends ? "이번 달 유행·검색 키워드" : ""].filter(Boolean);
+  const what = parts.length > 1 ? `${parts[0]}와 ${parts.slice(1).join(", ")}` : parts[0];
+  return `<p class="idea-intro">최근 ${months}개월(${f.getMonth() + 1}/${f.getDate()}~${t.getMonth() + 1}/${t.getDate()}) ${what}를 분석해, 셀러 이미지·계정 성장·팔로워 소통에 도움 되는 주제를 추천드려요!${a.at ? ` <small class="idea-at">· ${+a.at.slice(5, 7)}/${+a.at.slice(8, 10)} 업데이트</small>` : ""}</p>`;
 }
 let ideaShown = [];
 function ideasHTML() {
@@ -733,10 +757,10 @@ function ideasHTML() {
     <div class="idea-ctx">${esc(ctx.line)}</div>
     <div class="list">${picks.map((it, i) => {
       const ref = it.ref && IDEAS.refs[it.ref];
-      const meta = [it.f, ...(ref ? [`참고: ${ref.stat}`] : []), ...it.why];
+      const meta = [it.f, ...(ref && !it.src?.length ? [`참고: ${ref.stat}`] : []), ...it.why];
       return `<button type="button" class="entry idea" data-idea="${i}">
       <span class="fmt idea-g ${it.g}">${esc(IDEAS.short[it.g])}</span>
-      <span class="e-body"><span class="e-title">${esc(it.t)}</span><span class="e-prev">${esc(ref ? ref.point : it.whyText)}</span>
+      <span class="e-body">${it.src?.length ? `<span class="srcs">${srcChips(it)}</span>` : ""}<span class="e-title">${esc(it.t)}</span><span class="e-prev">${esc(it.hooks ? it.hooks[0] : ref ? ref.point : it.whyText)}</span>
       <span class="e-meta">${meta.map(w => `<span>${esc(w)}</span>`).join("")}</span></span>
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button>`;
     }).join("")}</div>`;
@@ -748,16 +772,28 @@ function moreIdeas() { // '다른 주제': 지금 보이는 주제는 빼고 새
 }
 function openIdea(it) {
   const ref = it.ref && IDEAS.refs[it.ref];
-  const text = `[${IDEAS.goals[it.g]} · ${it.f}] ${it.t}\n첫 문장: ${it.hook}\n구성:\n${it.steps.map((s, i) => `${i + 1}) ${s}`).join("\n")}\n도움 되는 점: ${it.whyText}` +
-    (ref ? `\n참고 게시물: ${ref.label} (${ref.stat}) ${ref.url}` : "");
-  openSheet(`<span class="pill">${esc(IDEAS.goals[it.g])}</span><span class="pill ghost">${esc(it.f)}</span>`, it.t,
-    (ref ? `<div class="field"><div class="lb">벤치마킹한 게시물</div><div class="tx"><a href="${safeUrl(ref.url)}" target="_blank" rel="noopener">${esc(ref.label)}</a>\n${esc(ref.stat)}\n${esc(ref.point)}</div></div>` : "") +
-    `<div class="field"><div class="lb">첫 문장 예시</div><div class="tx">${esc(it.hook)}</div></div>
-     <div class="field"><div class="lb">이렇게 구성해 보세요</div><div class="tx">${it.steps.map((s, i) => `${i + 1}) ${esc(s)}`).join("\n")}</div></div>
-     <div class="field"><div class="lb">이렇게 도움돼요</div><div class="tx">${esc(it.whyText)}</div></div>
-     ${it.why.length ? `<div class="field"><div class="lb">오늘 추천한 이유</div><div class="tx">${esc(it.why.join(" · "))}</div></div>` : ""}
-     <div class="cap-tools"><button type="button" class="cap-btn" id="idea-copy">기획 메모 복사</button></div>`);
-  $("#idea-copy").onclick = () => copyText(text);
+  const goal = IDEAS.goals[it.g] || "";
+  const hooks = it.hooks || [it.hook].filter(Boolean);
+  const scene = it.scene || it.steps || [];
+  const whyText = it.whyText || it.why;
+  const lines = [`[${goal} · ${it.f}] ${it.t}`, ...(it.date ? [`업로드 추천일: ${mdDow(it.date)}`] : []),
+    `후킹 문구:\n${hooks.map(h => `- ${h}`).join("\n")}`, `상황 묘사(콘텐츠 가이드):\n${scene.map((x, i) => `${i + 1}) ${x}`).join("\n")}`,
+    ...(it.caption ? [`캡션 첫 문단:\n${it.caption}`] : []), ...(it.cta ? [`참여 유도: ${it.cta}`] : []), ...(it.tip ? [`제작 팁: ${it.tip}`] : []),
+    ...(it.basis ? [`기획 근거: ${it.basis}`] : typeof whyText === "string" ? [`도움 되는 점: ${whyText}`] : []),
+    ...(ref ? [`참고 게시물: ${ref.label} (${ref.stat}) ${ref.url}`] : [])];
+  const field = (lb, html) => `<div class="field"><div class="lb">${lb}</div><div class="tx">${html}</div></div>`;
+  openSheet(`${it.date ? `<span class="pill">${esc(mdDow(it.date))} 업로드 추천</span>` : ""}<span class="pill">${esc(goal)}</span><span class="pill ghost">${esc(it.f)}</span>`, it.t,
+    (it.src?.length ? `<div class="srcs big">${srcChips(it)}</div>` : "") +
+    field("후킹 문구", hooks.map(h => `• ${esc(h)}`).join("\n")) +
+    field("상황 묘사 · 콘텐츠 가이드", scene.map((x, i) => `${i + 1}) ${esc(x)}`).join("\n")) +
+    (it.caption ? field("캡션 첫 문단", esc(it.caption)) : "") +
+    (it.cta ? field("참여 유도", esc(it.cta)) : "") +
+    (it.tip ? field("제작 팁", esc(it.tip)) : "") +
+    (it.basis ? field("기획 근거", esc(it.basis)) : typeof whyText === "string" ? field("이렇게 도움돼요", esc(whyText)) : "") +
+    (ref ? field("참고한 게시물", `<a href="${safeUrl(ref.url)}" target="_blank" rel="noopener">${esc(ref.label)}</a>\n${esc(ref.stat)}\n${esc(ref.point)}`) : "") +
+    (Array.isArray(it.why) && it.why.length ? field("오늘 추천한 이유", esc(it.why.join(" · "))) : "") +
+    `<div class="cap-tools"><button type="button" class="cap-btn" id="idea-copy">기획 메모 복사</button></div>`);
+  $("#idea-copy").onclick = () => copyText(lines.join("\n\n"));
 }
 
 let agendaList = [];
