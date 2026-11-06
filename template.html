@@ -132,6 +132,8 @@ a{color:var(--accent)}
 :root:not([data-theme="light"]) .src.search{background:#1B2B44;color:#A9C8FF}
 :root:not([data-theme="light"]) .src.fan{background:#3A1E32;color:#F2A9DA}
 :root:not([data-theme="light"]) .src.perf{background:#3A2E14;color:#F2C877}}
+.idea-brief{display:grid;gap:8px;margin:12px 0 4px;padding:12px 14px;border-radius:14px;background:var(--surface-2);font-size:13.5px;line-height:1.5}
+.idea-brief b{display:block;font-size:12px;color:var(--muted);font-weight:700;margin-bottom:1px}
 .idea-learn{display:block;margin:-2px 2px 8px;font-size:11.5px;color:var(--muted)}
 .idea-card{display:flex;flex-direction:column;gap:0}
 .idea-card .entry{border-bottom-left-radius:0;border-bottom-right-radius:0}
@@ -706,13 +708,13 @@ function entryHTML(e, idx, opts = {}) {
 const GOAL_ORDER = ["image", "grow", "talk", "bench"];
 const TREND_DAYS = IDEAS?.analysis?.trendWindow || 31; // 유행·검색량 기획은 기준일(asof)로부터 한 달 안에만 보여줌
 const isFresh = it => !(it.src || []).some(k => k === "trend" || k === "search") || !it.asof || (Date.now() - parse(it.asof)) / 864e5 <= TREND_DAYS;
+/* 추천은 '속 내용이 충분한' 기획만: 기획 의도·타깃·목표 지표·셀러 이미지·후킹(2개+)·상황 예시(4컷+)·촬영 가이드·스토리 연계·행동 유도 문구가 모두 있어야 함 */
+const IDEA_REQ = ["intent", "target", "kpi", "image", "shoot", "story", "cta"];
+const isFull = it => IDEA_REQ.every(k => it[k]) && (it.hooks || []).length >= 2 && (it.scene || it.steps || []).length >= 4;
 const IDEA_POOL = !IDEAS ? [] : [
-  ...IDEAS.items.filter(isFresh).map(it => ({...it, w: it.src?.length ? 4 : it.ref ? 3 : 2})), // 근거(유행·검색량·팔로워 관심·성과)가 있는 자세한 기획을 먼저
-  ...IDEAS.angles.flatMap(a => IDEAS.themes.map(th => ({ // 셀러 일상 주제 × 형식 조합
-    g: a.g, f: a.f, t: a.t.replaceAll("{n}", th.n), hook: a.hook.replaceAll("{n}", th.n),
-    steps: a.steps, why: a.why, months: th.months, when: th.when, tags: th.tags, w: 1}))),
+  ...IDEAS.items.filter(isFresh).map(it => ({...it, w: it.src?.length ? 4 : it.ref ? 3 : 2})),
   ...seasonPool(),
-];
+].filter(isFull);
 function josa(w, withF, noF) { // 받침에 따라 조사 고르기 (로는 ㄹ받침도 '로')
   const c = w.replace(/[^가-힣]+$/, "").slice(-1).charCodeAt(0) - 0xAC00;
   if (c < 0 || c > 11171) return noF;
@@ -730,8 +732,10 @@ function seasonPool() { // 월별 시즌 키워드(제철 음식·계절 루틴�
       for (const mk of needM ? kw.make : [kw.make?.[0] || ""]) {
         const fill = x => x.replaceAll("{k}{로}", kw.k + josa(kw.k, "으로", "로")).replaceAll("{k}{은}", kw.k + josa(kw.k, "은", "는"))
           .replaceAll("{k}", kw.k).replaceAll("{m}", mk).replace(/ — 예: $/, "");
-        out.push({g: a.g, f: a.f, t: fill(a.t), hooks: a.hooks.map(fill), steps: a.steps.map(fill), why: a.why,
-          months: [+m], src: ["season"], tags: kw.tags, make: kw.make, season: kw.k, gen: true, w: 2});
+        const o = {g: a.g, f: a.f, t: fill(a.t), hooks: a.hooks.map(fill), scene: a.steps.map(fill), why: a.why,
+          months: [+m], src: ["season"], tags: kw.tags, make: kw.make, examples: kw.make, season: kw.k, gen: true, w: 2};
+        IDEA_REQ.forEach(k => { if (a[k]) o[k] = fill(a[k]); });
+        out.push(o);
       }
     }
   }
@@ -789,10 +793,10 @@ function pickIdeas(k, avoid = []) {
       pool.forEach(x => ideaSeen.delete(x.it.t));
       fresh = pool;
     }
-    // 자세한 기획(후킹·상황 묘사·근거 있음) 65% → 이달 시즌 키워드 기획 20% → 그 외 직접 쓴 주제 10% → 조합 주제 5%
-    const tiers = [fresh.filter(x => x.it.hooks && !x.it.gen), fresh.filter(x => x.it.gen), fresh.filter(x => !x.it.hooks && x.it.w > 1), fresh.filter(x => x.it.w === 1)];
-    const odds = [0.65, 0.20, 0.10, 0.05].map((o, i) => tiers[i].length ? o : 0), sum = odds.reduce((a, b) => a + b, 0);
-    if (sum) { let r = Math.random() * sum, ti = 0; while (ti < 3 && (r -= odds[ti]) > 0) ti++; while (!tiers[ti].length) ti = (ti + 1) % 4; fresh = tiers[ti]; }
+    // 손으로 자세히 쓴 기획 70% → 이달 시즌 키워드 기획 30%
+    const tiers = [fresh.filter(x => !x.it.gen), fresh.filter(x => x.it.gen)];
+    const odds = [0.7, 0.3].map((o, i) => tiers[i].length ? o : 0), sum = odds[0] + odds[1];
+    if (sum) fresh = tiers[Math.random() * sum < odds[0] ? 0 : 1];
     let t = fresh.reduce((a, x) => a + x.r[0], 0) * Math.random();
     const hit = fresh.find(x => (t -= x.r[0]) <= 0) || fresh[0];
     if (!hit) return null;
@@ -809,13 +813,17 @@ function ideaIntro() { // ideas.json 의 analysis 로 안내 문장을 만듦 �
   const parts = [`게시글 ${a.count}개의 성과`, a.comments ? "팔로워 댓글" : "", a.trends ? "최근 한 달 유행·검색 키워드" : ""].filter(Boolean);
   const what = parts.length > 1 ? `${parts[0]}와 ${parts.slice(1).join(", ")}` : parts[0];
   const vs = Object.values(ideaVotes), up = vs.filter(v => v.v > 0).length, dn = vs.filter(v => v.v < 0).length, team = IDEAS.learn?.votes || 0;
-  const learnLine = up || dn || team ? `<small class="idea-learn">👍 ${up} · 👎 ${dn}${team ? ` · 팀 평가 ${team}개` : ""} 반영 중 — 좋아요한 형식·주제는 더, 싫어요한 건 덜 추천해요</small>` : `<small class="idea-learn">마음에 들면 👍, 별로면 👎 를 눌러주세요. 평가할수록 추천이 맞춰져요</small>`;
+  const learnLine = up || dn || team ? `<small class="idea-learn">👍 ${up} · 👎 ${dn}${team ? ` · 팀 평가 ${team}개` : ""} 반영 중 — 좋아요한 건 더, 싫어요한 건 덜, 그냥 넘긴 건 '무난'으로 다시 추천해요</small>` : `<small class="idea-learn">마음에 들면 👍, 별로면 👎 를 눌러주세요. 그냥 넘긴 기획은 '무난'으로 보고 나중에 다시 추천해요</small>`;
   return `<p class="idea-intro">최근 ${months}개월(${f.getMonth() + 1}/${f.getDate()}~${t.getMonth() + 1}/${t.getDate()}) ${what}를 분석해, 셀러 이미지·계정 성장·팔로워 소통에 도움 되는 주제를 추천드려요!${a.at ? ` <small class="idea-at">· ${+a.at.slice(5, 7)}/${+a.at.slice(8, 10)} 업데이트</small>` : ""}</p>${learnLine}`;
 }
 let ideaShown = [];
+function logShown(picks) { // 추천으로 보여준 기획 기록 → 평가 없이 넘긴 것은 '무난'으로 집계
+  logView("idea_shown", picks.map(x => x.t).join(" / ").slice(0, 200), "shown|" + picks.map(x => x.g).join(","));
+}
 function ideasHTML() {
   if (!IDEAS) return "";
-  const got = ideaCache[sel] ||= pickIdeas(sel);
+  if (!ideaCache[sel]) { ideaCache[sel] = pickIdeas(sel); logShown(ideaCache[sel].picks); }
+  const got = ideaCache[sel];
   const {ctx, picks} = got;
   ideaShown = picks;
   return `<div class="up-head idea-head"><span>💡 일상 콘텐츠 추천</span><button type="button" class="today-btn" id="idea-more">다른 주제</button></div>
@@ -823,12 +831,12 @@ function ideasHTML() {
     <div class="idea-ctx">${esc(ctx.line)}</div>
     <div class="list">${picks.map((it, i) => {
       const ref = it.ref && IDEAS.refs[it.ref];
-      const meta = [it.f, ...(ref && !it.src?.length ? [`참고: ${ref.stat}`] : []), ...it.why];
+      const meta = [it.f, `🎯 ${it.kpi}`, ...it.why];
       const v = ideaVotes[it.t]?.v || 0;
       return `<div class="idea-card"><button type="button" class="entry idea" data-idea="${i}">
       <span class="fmt idea-g ${it.g}">${esc(IDEAS.short[it.g])}</span>
       <span class="e-body">${it.src?.length ? `<span class="srcs">${srcChips(it)}</span>` : ""}<span class="e-title">${esc(it.t)}</span><span class="e-prev">${esc(it.hooks ? it.hooks[0] : ref ? ref.point : it.whyText)}</span>
-      ${it.make?.length ? `<span class="e-make">🍳 만들어보기: ${esc(it.make.slice(0, 2).join(", "))}</span>` : ""}
+      ${it.make?.length ? `<span class="e-make">🍳 만들어보기: ${esc(it.make.slice(0, 2).join(", "))}</span>` : it.examples?.length ? `<span class="e-make">📌 예시: ${esc(it.examples.slice(0, 2).join(", "))}</span>` : ""}
       <span class="e-meta">${meta.map(w => `<span>${esc(w)}</span>`).join("")}</span></span>
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button>
       ${voteBtns(i, v)}</div>`;
@@ -849,34 +857,48 @@ function voteIdea(i, val) { // 같은 버튼을 다시 누르면 취소
   } else if (v === 1) toast("비슷한 형식·주제를 더 추천할게요");
   renderAgenda();
 }
-function moreIdeas() { // '다른 주제': 지금 보이는 주제는 빼고 새로 고름
+function moreIdeas() { // '다른 주제': 지금 보이는 주제는 빼고 새로 고름 (넘긴 주제는 '무난' — 벌점 없이 나중에 다시 나옴)
   ideaCache[sel] = pickIdeas(sel, ideaShown.map(x => x.t));
+  logShown(ideaCache[sel].picks);
   renderAgenda();
   document.querySelector(".idea-head")?.scrollIntoView({block: "nearest"});
 }
 function openIdea(it) {
   const ref = it.ref && IDEAS.refs[it.ref];
   const goal = IDEAS.goals[it.g] || "";
-  const hooks = it.hooks || [it.hook].filter(Boolean);
+  const hooks = it.hooks || [];
   const scene = it.scene || it.steps || [];
-  const whyText = it.whyText || it.why;
-  const lines = [`[${goal} · ${it.f}] ${it.t}`, ...(it.date ? [`업로드 추천일: ${mdDow(it.date)}`] : []),
-    `후킹 문구:\n${hooks.map(h => `- ${h}`).join("\n")}`, `상황 묘사(콘텐츠 가이드):\n${scene.map((x, i) => `${i + 1}) ${x}`).join("\n")}`,
-    ...(it.make?.length ? [`만들어보기 예시: ${it.make.join(", ")}`] : []),
-    ...(it.caption ? [`캡션 첫 문단:\n${it.caption}`] : []), ...(it.cta ? [`참여 유도: ${it.cta}`] : []), ...(it.tip ? [`제작 팁: ${it.tip}`] : []),
-    ...(it.basis ? [`기획 근거: ${it.basis}`] : typeof whyText === "string" ? [`도움 되는 점: ${whyText}`] : []),
+  const ex = it.examples || it.make || [];
+  const exText = x => it.make?.includes(x) ? `🍳 ${x} 만들어보기` : `📌 ${x}`;
+  const lines = [`[${goal} · ${it.f}] ${it.t}`,
+    `핵심 기획 의도: ${it.intent}`, `저격 타깃: ${it.target}`, `목표 지표: ${it.kpi}`, `목표 셀러 이미지: ${it.image}`,
+    `후킹 문구:\n${hooks.map(h => `- ${h}`).join("\n")}`,
+    `상황 예시(컷 구성):\n${scene.map((x, i) => `${i + 1}) ${x}`).join("\n")}`,
+    `촬영 가이드: ${it.shoot}`,
+    ...(ex.length ? [`구체 예시${it.make?.length ? " · 이번 시즌 만들어보기" : ""}:\n${ex.map(x => `- ${exText(x)}`).join("\n")}`] : []),
+    `스토리 연계: ${it.story}`, `행동 유도 문구: ${it.cta}`,
+    ...(it.caption ? [`캡션 첫 문단:\n${it.caption}`] : []), ...(it.tip ? [`제작 팁: ${it.tip}`] : []),
+    ...(it.basis ? [`기획 근거: ${it.basis}`] : []),
     ...(it.srcLink ? [`유행 출처: ${it.srcLink.label} ${it.srcLink.url}`] : []),
     ...(ref ? [`참고 게시물: ${ref.label} (${ref.stat}) ${ref.url}`] : [])];
-  const field = (lb, html) => `<div class="field"><div class="lb">${lb}</div><div class="tx">${html}</div></div>`;
-  openSheet(`${it.date ? `<span class="pill">${esc(mdDow(it.date))} 업로드 추천</span>` : ""}<span class="pill">${esc(goal)}</span><span class="pill ghost">${esc(it.f)}</span>`, it.t,
+  const field = (lb, html, cls = "") => `<div class="field${cls}"><div class="lb">${lb}</div><div class="tx">${html}</div></div>`;
+  openSheet(`<span class="pill">${esc(goal)}</span><span class="pill ghost">${esc(it.f)}</span>`, it.t,
     (it.src?.length ? `<div class="srcs big">${srcChips(it)}</div>` : "") +
+    `<div class="idea-brief">
+      <div><b>🎯 핵심 기획 의도</b>${esc(it.intent)}</div>
+      <div><b>👥 저격 타깃</b>${esc(it.target)}</div>
+      <div><b>📊 목표 지표</b>${esc(it.kpi)}</div>
+      <div><b>✨ 목표 셀러 이미지</b>${esc(it.image)}</div>
+    </div>` +
     field("후킹 문구", hooks.map(h => `• ${esc(h)}`).join("\n")) +
-    field("상황 묘사 · 콘텐츠 가이드", scene.map((x, i) => `${i + 1}) ${esc(x)}`).join("\n")) +
-    (it.make?.length ? field(`만들어보기 예시${it.season || it.months ? " (이번 시즌)" : ""}`, it.make.map(x => `🍳 ${esc(x)} 만들어보기`).join("\n")) : "") +
+    field("상황 예시 · 컷 구성", scene.map((x, i) => `${i + 1}) ${esc(x)}`).join("\n")) +
+    field("촬영 가이드", esc(it.shoot)) +
+    (ex.length ? field(it.make?.length ? "구체 예시 · 이번 시즌 만들어보기" : "구체 예시", ex.map(x => esc(exText(x))).join("\n")) : "") +
+    field("스토리 연계", esc(it.story)) +
+    field("행동 유도 문구", esc(it.cta)) +
     (it.caption ? field("캡션 첫 문단", esc(it.caption)) : "") +
-    (it.cta ? field("참여 유도", esc(it.cta)) : "") +
     (it.tip ? field("제작 팁", esc(it.tip)) : "") +
-    (it.basis ? field("기획 근거", esc(it.basis)) : typeof whyText === "string" ? field("이렇게 도움돼요", esc(whyText)) : "") +
+    (it.basis ? field("기획 근거", esc(it.basis)) : "") +
     (it.srcLink ? field("유행 출처", `<a href="${safeUrl(it.srcLink.url)}" target="_blank" rel="noopener">${esc(it.srcLink.label)}</a>`) : "") +
     (ref ? field("참고한 게시물", `<a href="${safeUrl(ref.url)}" target="_blank" rel="noopener">${esc(ref.label)}</a>\n${esc(ref.stat)}\n${esc(ref.point)}`) : "") +
     (Array.isArray(it.why) && it.why.length ? field("오늘 추천한 이유", esc(it.why.join(" · "))) : "") +
